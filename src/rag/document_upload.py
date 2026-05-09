@@ -1,5 +1,6 @@
 """
 Document upload and processing module.
+Stores chunks in both a per-session FAISS index and the global index.
 """
 
 import os
@@ -9,44 +10,38 @@ from fastapi import UploadFile, File
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from src.rag.retriever_setup import retriever_chain
+from src.rag.retriever_setup import retriever_chain, store_session_docs
 from src.tools.common_tools import enhance_description_with_llm
 
 
-def documents(description: str, file: UploadFile = File(...)):
+def documents(description: str, file: UploadFile, session_id: str) -> bool:
     """
-    Process and upload a document for RAG.
+    Process and store an uploaded document.
 
-    Validates file type, loads content, enhances description, chunks documents,
-    and stores them in the vector database.
+    Chunks the document, persists it in:
+      - a per-session FAISS index (so this session always searches its own docs)
+      - the global FAISS index (fallback for sessions without uploads)
 
     Args:
         description: User-provided document description.
         file: The uploaded file (PDF or TXT).
+        session_id: The chat session that owns this upload.
 
     Returns:
-        Boolean indicating success of the upload process.
-
-    Raises:
-        HTTPException: If file type is not supported or loading fails.
+        True on success, raises HTTPException on failure.
     """
     filename = file.filename
-    print(filename)
     if not filename.endswith(".pdf") and not filename.endswith(".txt"):
         from fastapi import HTTPException
-        raise HTTPException(
-            status_code=400,
-            detail="Only PDF and TXT files are supported"
-        )
+        raise HTTPException(status_code=400, detail="Only PDF and TXT files are supported")
 
     file_bytes = file.file.read()
 
     with tempfile.NamedTemporaryFile(
-        delete=False,
-        suffix=os.path.splitext(filename)[1]
-    ) as tmp_file:
-        tmp_file.write(file_bytes)
-        tmp_path = tmp_file.name
+        delete=False, suffix=os.path.splitext(filename)[1]
+    ) as tmp:
+        tmp.write(file_bytes)
+        tmp_path = tmp.name
 
     if filename.endswith(".pdf"):
         loader = PyPDFLoader(tmp_path)
@@ -57,33 +52,22 @@ def documents(description: str, file: UploadFile = File(...)):
         docs = loader.load()
     except Exception as e:
         from fastapi import HTTPException
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error loading file: {e}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error loading file: {e}")
     finally:
         os.unlink(tmp_path)
 
-    # Enhance description using LLM
-    description_llm = enhance_description_with_llm(description)
+    enhanced_description = enhance_description_with_llm(description)
 
-    # Save enhanced description
+    # Also update the legacy global description.txt so the global retriever
+    # has a useful tool description.
     with open("description.txt", "w", encoding="utf-8") as f:
-        f.write(description_llm)
+        f.write(enhanced_description)
 
-    with open("description.txt", "r", encoding="utf-8") as f:
-        print("Document description from storage:")
-        print(f.read())
-
-    # Split documents into chunks
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=150
-    )
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
     chunks = splitter.split_documents(docs)
 
-    return retriever_chain(chunks)
+    # Store in per-session index (primary) and global index (fallback)
+    store_session_docs(session_id, chunks, enhanced_description)
+    retriever_chain(chunks)
 
-
-
-
+    return True

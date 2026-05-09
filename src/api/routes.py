@@ -31,7 +31,8 @@ async def rag_query(req: QueryRequest):
     # Fetch full history
     messages = await chat_history.get_messages()
     result = builder.invoke({
-        "messages": messages
+        "messages": messages,
+        "session_id": req.session_id,
     })
     output_text = result["messages"][-1].content
 
@@ -41,21 +42,72 @@ async def rag_query(req: QueryRequest):
     return {"result": result["messages"][-1]}
 
 
+@router.get("/rag/history/{session_id}")
+async def get_history(session_id: str):
+    """Return chat history for a session as a list of {role, content} objects."""
+    chat_history = ChatHistory.get_session_history(session_id)
+    messages = await chat_history.get_messages()
+    return {
+        "history": [
+            {"role": msg.type, "content": msg.content}
+            for msg in messages
+        ]
+    }
+
+
+@router.get("/rag/sessions/{username}")
+async def get_sessions(username: str):
+    """Return all chat sessions for a user with title and creation time."""
+    from src.db.mongo_client import db
+    collection = db["chat_history"]
+
+    # Find all session_ids that belong to this user (prefix: username_)
+    prefix = f"{username}_"
+    pipeline = [
+        {"$match": {"session_id": {"$regex": f"^{prefix}"}}},
+        {"$sort": {"timestamp": 1}},
+        {"$group": {
+            "_id": "$session_id",
+            "title": {"$first": {"$cond": [{"$eq": ["$type", "human"]}, "$content", None]}},
+            "created_at": {"$first": "$timestamp"},
+            "last_updated": {"$last": "$timestamp"},
+        }},
+        {"$sort": {"created_at": 1}},
+    ]
+    docs = await collection.aggregate(pipeline).to_list(length=200)
+
+    sessions = []
+    for d in docs:
+        title = d.get("title") or "New Conversation"
+        sessions.append({
+            "session_id": d["_id"],
+            "title": title[:60] + ("..." if len(title) > 60 else ""),
+            "created_at": d["created_at"].isoformat() if d.get("created_at") else None,
+            "last_updated": d["last_updated"].isoformat() if d.get("last_updated") else None,
+        })
+    return {"sessions": sessions}
+
+
 @router.post("/rag/documents/upload")
 async def upload_file(
     file: UploadFile = File(...),
-    description: str = Header(..., alias="X-Description")
+    description: str = Header(..., alias="X-Description"),
+    session_id: str = Header(..., alias="X-Session-ID"),
 ):
     """
     Upload a document for RAG processing.
 
+    Stores the document in both a per-session index (so the owning session
+    always searches its own docs) and the global index.
+
     Args:
         file: The file to upload (PDF or TXT).
         description: Document description provided via header.
+        session_id: The chat session that owns this upload (X-Session-ID header).
 
     Returns:
-        Upload status.
+        Upload status and session_id.
     """
-    status_upload = documents(description, file)
-    return {"status": status_upload}
+    status_upload = documents(description, file, session_id)
+    return {"status": status_upload, "session_id": session_id}
 

@@ -9,9 +9,9 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# Backend service URLs
-RUST_BASE_URL = "http://localhost:8080/api"
-PYTHON_BASE_URL = "http://127.0.0.1:8000"
+# Backend service URLs (configurable via env vars for Docker)
+RUST_BASE_URL = os.getenv("RUST_BASE_URL", "http://localhost:8080/api")
+PYTHON_BASE_URL = os.getenv("PYTHON_BASE_URL", "http://127.0.0.1:8000")
 
 
 def create_user(username: str, password: str, api_token: str) -> bool:
@@ -103,6 +103,38 @@ def get_api_token() -> str:
         return response.json()["api_token"]
 
     return None
+
+
+def fetch_sessions(username: str) -> list:
+    """
+    Fetch all chat sessions for a user.
+
+    Returns:
+        List of {"session_id", "title", "created_at", "last_updated"} dicts.
+    """
+    try:
+        response = requests.get(f"{PYTHON_BASE_URL}/rag/sessions/{username}")
+        if response.status_code == 200:
+            return response.json().get("sessions", [])
+    except requests.RequestException as e:
+        logger.exception("Failed to fetch sessions: %s", e)
+    return []
+
+
+def fetch_chat_history(session_id: str) -> list:
+    """
+    Fetch existing chat history for a session from the backend.
+
+    Returns:
+        List of {"role": str, "content": str} dicts in chronological order.
+    """
+    try:
+        response = requests.get(f"{PYTHON_BASE_URL}/rag/history/{session_id}")
+        if response.status_code == 200:
+            return response.json().get("history", [])
+    except requests.RequestException as e:
+        logger.exception("Failed to fetch chat history: %s", e)
+    return []
 
 
 def query_backend(query: str, session_id: str) -> str:
