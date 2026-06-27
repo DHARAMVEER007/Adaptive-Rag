@@ -2,7 +2,7 @@
 Chat history storage using MongoDB backend.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 from langchain_core.chat_history import BaseChatMessageHistory
@@ -37,7 +37,7 @@ class MongoDBChatMessageHistory(BaseChatMessageHistory):
             "type": message.type,
             "content": message.content,
             "additional_kwargs": message.additional_kwargs,
-            "timestamp": datetime.utcnow(),
+            "timestamp": datetime.now(timezone.utc),
         })
 
     async def get_messages(self) -> List[BaseMessage]:

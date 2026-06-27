@@ -55,7 +55,9 @@ export default function App() {
     if (!user) return
     try {
       const sessions = await rag.getSessions(user.username)
-      const mapped = sessions.map(sessionToChat)
+      const mapped = sessions
+        .map(sessionToChat)
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
       setChats(mapped)
       setActiveChatId((prev) => prev ?? mapped[0]?.id ?? null)
     } catch (e) {

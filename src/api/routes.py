@@ -82,8 +82,8 @@ async def get_sessions(username: str):
         sessions.append({
             "session_id": d["_id"],
             "title": title[:60] + ("..." if len(title) > 60 else ""),
-            "created_at": d["created_at"].isoformat() if d.get("created_at") else None,
-            "last_updated": d["last_updated"].isoformat() if d.get("last_updated") else None,
+            "created_at": d["created_at"].isoformat() + 'Z' if d.get("created_at") else None,
+            "last_updated": d["last_updated"].isoformat() + 'Z' if d.get("last_updated") else None,
         })
     return {"sessions": sessions}
 

@@ -1,6 +1,7 @@
+import { useMemo } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import ChatItem from './ChatItem'
-import { getGroup, GROUP_LABELS, GROUP_ORDER } from '../../data/chatData'
+import { getGroup, getGroupLabel, sortGroupKeys } from '../../data/chatData'
 
 const GroupLabel = ({ label }) => (
   <div className="px-3 pt-3 pb-1">
@@ -12,16 +13,30 @@ const GroupLabel = ({ label }) => (
 )
 
 const ChatHistory = ({ chats, activeChat, isCollapsed, onSelectChat, onDeleteChat }) => {
-  const grouped = GROUP_ORDER.reduce((acc, key) => {
-    const items = chats.filter((c) => getGroup(c.timestamp) === key)
-    if (items.length) acc[key] = items
-    return acc
-  }, {})
+  const { groupMap, groupKeys } = useMemo(() => {
+    const map = {}
+    chats.forEach((c) => {
+      const key = getGroup(c.timestamp)
+      if (!map[key]) map[key] = []
+      map[key].push(c)
+    })
+    // Sort items within each group newest first
+    Object.values(map).forEach((items) =>
+      items.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    )
+    return { groupMap: map, groupKeys: sortGroupKeys(Object.keys(map)) }
+  }, [chats])
+
+  // Collapsed: show recent chats sorted newest first
+  const sortedAll = useMemo(
+    () => [...chats].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
+    [chats]
+  )
 
   if (isCollapsed) {
     return (
       <div className="flex-1 overflow-y-auto scrollbar-none mt-2 flex flex-col gap-0.5 items-center">
-        {chats.slice(0, 10).map((chat) => (
+        {sortedAll.slice(0, 10).map((chat) => (
           <ChatItem
             key={chat.id}
             chat={chat}
@@ -45,13 +60,12 @@ const ChatHistory = ({ chats, activeChat, isCollapsed, onSelectChat, onDeleteCha
           </span>
         </div>
 
-        {GROUP_ORDER.map((groupKey) => {
-          const items = grouped[groupKey]
+        {groupKeys.map((groupKey) => {
+          const items = groupMap[groupKey]
           if (!items) return null
-
           return (
             <div key={groupKey}>
-              <GroupLabel label={GROUP_LABELS[groupKey]} />
+              <GroupLabel label={getGroupLabel(groupKey)} />
               <div className="space-y-[2px]">
                 <AnimatePresence mode="popLayout" initial={false}>
                   {items.map((chat) => (
