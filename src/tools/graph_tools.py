@@ -7,11 +7,13 @@ from typing import Literal
 from langchain_core.prompts import PromptTemplate
 
 from src.config.settings import Config
+from src.core.logger import get_logger
 from src.llms.openai import llm
 from src.models.state import State
 from src.models.verification_result import VerificationResult
 
 config = Config()
+logger = get_logger(__name__)
 
 
 def routing_tool(state: State) -> Literal["retriever", "general_llm", "web_search"]:
@@ -43,7 +45,7 @@ def doc_tool(state: State) -> Literal["rewrite", "generate"]:
         The next node: "generate" if score is "yes", otherwise "rewrite".
     """
     score = state["binary_score"]
-    print(f"[doc_tool] Routing based on score: {score}")
+    logger.debug("doc_tool routing based on score: %s", score)
     if score == "yes":
         return "generate"
     else:
@@ -84,5 +86,5 @@ def verify_answer(state: State) -> Literal["__end__", "generate"]:
     if result.faithful:
         return "__end__"
     else:
-        print("Generating again as answer is not faithful.")
+        logger.info("Answer not faithful to context; regenerating.")
         return "generate"
