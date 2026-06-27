@@ -1,42 +1,48 @@
 """
-ReAct agent setup for document retrieval and question answering.
+Tool-calling agent setup for document retrieval and question answering.
 """
 
-import os
+from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate
-
-from src.config.settings import Config
 from src.llms.openai import llm
 from src.rag.retriever_setup import get_retriever
 
-config = Config()
+_SYSTEM_PROMPT = (
+    "You are a helpful assistant. "
+    "Use the retriever tool to find relevant information from uploaded documents, "
+    "then answer the user's question based on what you find."
+)
 
-# Initialize tools
-tools = [get_retriever()]
-
-# Load document description if available
-if os.path.exists("description.txt"):
-    with open("description.txt", "r", encoding="utf-8") as f:
-        description = f.read()
-else:
-    description = None
-
-# Create ReAct agent prompt
 prompt = ChatPromptTemplate.from_messages([
-    ("system", config.prompt("system_prompt")),
+    ("system", _SYSTEM_PROMPT),
     ("human", "{input}"),
-    ("ai", "{agent_scratchpad}")
+    MessagesPlaceholder("agent_scratchpad"),
 ])
 
-# Initialize the ReAct agent and executor
-react_agent = create_react_agent(llm, tools, prompt)
+# Default global agent (no session filtering)
+_default_tools = [get_retriever()]
+_default_agent = create_tool_calling_agent(llm, _default_tools, prompt)
 agent_executor = AgentExecutor(
-    agent=react_agent,
-    tools=tools,
+    agent=_default_agent,
+    tools=_default_tools,
     handle_parsing_errors=True,
-    max_iterations=2,
+    max_iterations=6,
     verbose=True,
-    return_intermediate_steps=True
+    return_intermediate_steps=True,
 )
+
+
+def create_session_agent(session_id: str) -> AgentExecutor:
+    """Return an AgentExecutor whose retriever is scoped to the given session."""
+    retriever_tool = get_retriever(session_id)
+    tools = [retriever_tool]
+    agent = create_tool_calling_agent(llm, tools, prompt)
+    return AgentExecutor(
+        agent=agent,
+        tools=tools,
+        handle_parsing_errors=True,
+        max_iterations=6,
+        verbose=True,
+        return_intermediate_steps=True,
+    )

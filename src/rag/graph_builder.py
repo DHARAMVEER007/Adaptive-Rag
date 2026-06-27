@@ -8,8 +8,8 @@ from langchain_core.prompts import PromptTemplate
 from langgraph.constants import START, END
 from langgraph.graph.state import StateGraph
 
-from src.rag.reAct_agent import agent_executor
-from src.rag.retriever_setup import get_retriever
+from src.rag.reAct_agent import agent_executor, create_session_agent
+from src.rag.retriever_setup import get_retriever, session_has_docs
 from src.config.settings import Config
 from src.llms.openai import llm
 from src.models.grade import Grade
@@ -32,7 +32,8 @@ def query_classifier(state: State):
         dict: Updated state with route and latest_query.
     """
     question = state["messages"][-1].content
-    retriever = get_retriever()
+    session_id = state.get("session_id")
+    retriever = get_retriever(session_id)
     context = retriever.invoke(question)
     print("docs received from Qdrant")
     print(context)
@@ -69,6 +70,7 @@ def general_llm(state: State):
 def retriever_node(state: State):
     """
     Retrieve results from vector stores using the reAct agent.
+    Uses a session-specific agent when the session has uploaded documents.
 
     Args:
         state (State): The current state of the graph.
@@ -77,7 +79,13 @@ def retriever_node(state: State):
         dict: Updated messages with tool calls.
     """
     messages = state["latest_query"]
-    result = agent_executor.invoke({"input": messages})
+    session_id = state.get("session_id")
+    executor = (
+        create_session_agent(session_id)
+        if session_id and session_has_docs(session_id)
+        else agent_executor
+    )
+    result = executor.invoke({"input": messages})
 
     # Extract tool calls
     intermediate_steps = result.get("intermediate_steps", [])

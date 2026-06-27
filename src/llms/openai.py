@@ -1,13 +1,15 @@
 """
-OpenAI LLM initialization and configuration.
+LLM initialization — uses Groq (free tier) with llama-3.3-70b.
 """
 
 import os
 
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 
 load_dotenv()
-os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "")
 
-llm = ChatOpenAI(model="gpt-4o")
+llm = ChatGroq(
+    model="llama-3.3-70b-versatile",
+    api_key=os.getenv("GROQ_API_KEY", ""),
+)
