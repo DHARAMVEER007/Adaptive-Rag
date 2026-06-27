@@ -11,6 +11,10 @@ from langchain_core.tools import create_retriever_tool
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 
+from src.core.logger import get_logger
+
+logger = get_logger(__name__)
+
 FAISS_INDEX_PATH = "/app/data/faiss_index"
 SESSION_INDEX_BASE = "/app/data/sessions"
 
@@ -28,12 +32,12 @@ def _load_global() -> FAISS:
     if _global_vectorstore is not None:
         return _global_vectorstore
     if os.path.exists(FAISS_INDEX_PATH):
-        print("Loading global FAISS index from disk")
+        logger.info("Loading global FAISS index from disk")
         _global_vectorstore = FAISS.load_local(
             FAISS_INDEX_PATH, embeddings, allow_dangerous_deserialization=True
         )
     else:
-        print("No global FAISS index — creating dummy")
+        logger.info("No global FAISS index found; creating placeholder index")
         dummy = Document(
             page_content="No documents uploaded yet. Please upload a document first.",
             metadata={"source": "init"},
@@ -52,10 +56,10 @@ def retriever_chain(chunks: list[Document]) -> bool:
         _global_vectorstore = existing
         os.makedirs(FAISS_INDEX_PATH, exist_ok=True)
         _global_vectorstore.save_local(FAISS_INDEX_PATH)
-        print(f"Global FAISS updated with {len(chunks)} chunks")
+        logger.info("Global FAISS index updated with %d chunks", len(chunks))
         return True
-    except Exception as e:
-        print(f"Error updating global FAISS: {e}")
+    except Exception:
+        logger.exception("Error updating global FAISS index")
         return False
 
 
@@ -97,10 +101,10 @@ def store_session_docs(session_id: str, chunks: list[Document], description: str
         with open(desc_path, "w", encoding="utf-8") as f:
             f.write(description)
 
-        print(f"Session FAISS [{session_id}] updated with {len(chunks)} chunks")
+        logger.info("Session FAISS index [%s] updated with %d chunks", session_id, len(chunks))
         return True
-    except Exception as e:
-        print(f"Error storing session docs [{session_id}]: {e}")
+    except Exception:
+        logger.exception("Error storing session docs [%s]", session_id)
         return False
 
 
@@ -130,14 +134,14 @@ def get_retriever(session_id: str | None = None):
         if os.path.exists(desc_path):
             with open(desc_path, encoding="utf-8") as f:
                 description = f.read()
-        print(f"Using session-specific retriever for [{session_id}]")
+        logger.debug("Using session-specific retriever for [%s]", session_id)
     else:
         vectorstore = _load_global()
         description = "uploaded documents"
         if os.path.exists("description.txt"):
             with open("description.txt", encoding="utf-8") as f:
                 description = f.read()
-        print("Using global retriever")
+        logger.debug("Using global retriever")
 
     return create_retriever_tool(
         vectorstore.as_retriever(search_kwargs={"k": 4}),
