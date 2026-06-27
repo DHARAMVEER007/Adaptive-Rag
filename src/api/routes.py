@@ -3,6 +3,7 @@ API routes for RAG operations.
 """
 
 from fastapi import APIRouter, UploadFile, File, Header, Depends
+from fastapi.concurrency import run_in_threadpool
 from langchain_core.messages import HumanMessage, AIMessage
 
 from src.api.security import CurrentUser, get_current_user, require_session_owner
@@ -32,10 +33,11 @@ async def rag_query(req: QueryRequest, user: CurrentUser = Depends(get_current_u
 
     # Fetch full history
     messages = await chat_history.get_messages()
-    result = builder.invoke({
-        "messages": messages,
-        "session_id": req.session_id,
-    })
+    # builder.invoke is synchronous/CPU-bound; run it off the event loop.
+    result = await run_in_threadpool(
+        builder.invoke,
+        {"messages": messages, "session_id": req.session_id},
+    )
     output_text = result["messages"][-1].content
 
     # Save assistant message

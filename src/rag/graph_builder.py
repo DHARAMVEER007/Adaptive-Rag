@@ -11,6 +11,7 @@ from langgraph.graph.state import StateGraph
 from src.rag.reAct_agent import agent_executor, create_session_agent
 from src.rag.retriever_setup import get_retriever, session_has_docs
 from src.config.settings import Config
+from src.core.logger import get_logger
 from src.llms.openai import llm
 from src.models.grade import Grade
 from src.models.route_identifier import RouteIdentifier
@@ -18,6 +19,7 @@ from src.models.state import State
 from src.tools.graph_tools import routing_tool, doc_tool
 
 config = Config()
+logger = get_logger(__name__)
 
 
 # Node implementations
@@ -35,8 +37,7 @@ def query_classifier(state: State):
     session_id = state.get("session_id")
     retriever = get_retriever(session_id)
     context = retriever.invoke(question)
-    print("docs received from Qdrant")
-    print(context)
+    logger.debug("Retrieved context for classification: %s", context)
 
     llm_with_structured_output = llm.with_structured_output(RouteIdentifier)
     classify_prompt = PromptTemplate(
@@ -45,8 +46,7 @@ def query_classifier(state: State):
     )
     chain = classify_prompt | llm_with_structured_output
     result = chain.invoke({"question": question, "context": context})
-    print("result received is in query classifier")
-    print(result.route)
+    logger.info("Query classified to route: %s", result.route)
 
     return {"messages": state["messages"], "route": result.route, "latest_query": question}
 
@@ -62,8 +62,7 @@ def general_llm(state: State):
         dict: Updated messages from LLM.
     """
     result = llm.invoke(state["messages"])
-    print("inside general llm")
-    print(result)
+    logger.debug("general_llm result: %s", result)
     return {"messages": result}
 
 
@@ -129,7 +128,7 @@ def grade(state: State):
     chain_graded = grading_prompt | llm_with_grade
     result = chain_graded.invoke({"question": question, "context": context})
 
-    print(result)
+    logger.info("Document grade: %s", result.binary_score)
     return {"messages": state["messages"], "binary_score": result.binary_score}
 
 
@@ -150,7 +149,7 @@ def rewrite_query(state: State):
     )
     chain = rewrite_prompt | llm
     result = chain.invoke({"query": query})
-    print(result)
+    logger.debug("Rewritten query: %s", result.content)
 
     return {
         "latest_query": result.content
@@ -197,7 +196,7 @@ def web_search(state: State):
     result = search_tool.invoke(state["latest_query"])
 
     contents = [item["content"] for item in result if "content" in item]
-    print(contents)
+    logger.info("Web search returned %d result(s)", len(contents))
 
     return {
         "messages": [{"role": "assistant", "content": "\n\n".join(contents)}]
