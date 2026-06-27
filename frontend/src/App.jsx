@@ -4,7 +4,7 @@ import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
 import LoginPage from './pages/LoginPage'
 import UploadModal from './components/UploadModal'
-import { rag } from './api/client'
+import { rag, auth } from './api/client'
 
 const LS_KEY = 'lg_user'
 const LS_DOC_KEY = 'lg_doc_sessions' // { [sessionId]: filename }
@@ -54,7 +54,7 @@ export default function App() {
   const loadSessions = useCallback(async () => {
     if (!user) return
     try {
-      const sessions = await rag.getSessions(user.username)
+      const sessions = await rag.getSessions()
       const mapped = sessions
         .map(sessionToChat)
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
@@ -73,6 +73,7 @@ export default function App() {
   }
 
   const handleLogout = () => {
+    auth.logout()
     localStorage.removeItem(LS_KEY)
     setUser(null)
     setChats([])
