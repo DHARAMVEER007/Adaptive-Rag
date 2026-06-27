@@ -2,9 +2,10 @@
 API routes for RAG operations.
 """
 
-from fastapi import APIRouter, UploadFile, File, Header
+from fastapi import APIRouter, UploadFile, File, Header, Depends
 from langchain_core.messages import HumanMessage, AIMessage
 
+from src.api.security import CurrentUser, get_current_user, require_session_owner
 from src.memory.chat_history_mongo import ChatHistory
 from src.models.query_request import QueryRequest
 from src.rag.document_upload import documents
@@ -14,17 +15,18 @@ router = APIRouter()
 
 
 @router.post("/rag/query")
-async def rag_query(req: QueryRequest):
+async def rag_query(req: QueryRequest, user: CurrentUser = Depends(get_current_user)):
     """
     Process a RAG query and return the result.
 
     Args:
         req: The query request containing query text and session_id.
+        user: The authenticated caller (from the verified JWT).
 
     Returns:
         The generated response from the RAG pipeline.
     """
-    #chat_history=ChatInMemoryHistory.get_session_history(req.token)
+    require_session_owner(req.session_id, user)
     chat_history = ChatHistory.get_session_history(req.session_id)
     await chat_history.add_message(HumanMessage(content=req.query))
 
@@ -43,8 +45,9 @@ async def rag_query(req: QueryRequest):
 
 
 @router.get("/rag/history/{session_id}")
-async def get_history(session_id: str):
+async def get_history(session_id: str, user: CurrentUser = Depends(get_current_user)):
     """Return chat history for a session as a list of {role, content} objects."""
+    require_session_owner(session_id, user)
     chat_history = ChatHistory.get_session_history(session_id)
     messages = await chat_history.get_messages()
     return {
@@ -55,14 +58,14 @@ async def get_history(session_id: str):
     }
 
 
-@router.get("/rag/sessions/{username}")
-async def get_sessions(username: str):
-    """Return all chat sessions for a user with title and creation time."""
+@router.get("/rag/sessions")
+async def get_sessions(user: CurrentUser = Depends(get_current_user)):
+    """Return all chat sessions for the authenticated user with title and creation time."""
     from src.db.mongo_client import db
     collection = db["chat_history"]
 
     # Find all session_ids that belong to this user (prefix: username_)
-    prefix = f"{username}_"
+    prefix = f"{user.username}_"
     pipeline = [
         {"$match": {"session_id": {"$regex": f"^{prefix}"}}},
         {"$sort": {"timestamp": 1}},
@@ -93,6 +96,7 @@ async def upload_file(
     file: UploadFile = File(...),
     description: str = Header(..., alias="X-Description"),
     session_id: str = Header(..., alias="X-Session-ID"),
+    user: CurrentUser = Depends(get_current_user),
 ):
     """
     Upload a document for RAG processing.
@@ -108,6 +112,7 @@ async def upload_file(
     Returns:
         Upload status and session_id.
     """
+    require_session_owner(session_id, user)
     status_upload = documents(description, file, session_id)
     return {"status": status_upload, "session_id": session_id}
 
