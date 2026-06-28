@@ -6,10 +6,8 @@ MongoDB is fully mocked via unittest.mock so no real database is needed.
 
 import os
 import sys
-import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 os.environ.setdefault("JWT_SECRET", "ci-test-key")

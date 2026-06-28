@@ -6,7 +6,6 @@ All tests run without a database or LLM — only JWT signing/verification logic.
 
 import os
 import datetime
-import importlib
 
 import pytest
 import jwt as pyjwt

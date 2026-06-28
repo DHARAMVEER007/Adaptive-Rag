@@ -8,7 +8,6 @@ import os
 import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 import jwt as pyjwt
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
