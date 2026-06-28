@@ -58,8 +58,12 @@ export default function App() {
       const mapped = sessions
         .map(sessionToChat)
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-      setChats(mapped)
-      setActiveChatId((prev) => prev ?? mapped[0]?.id ?? null)
+      // Start each login on a fresh chat rather than reopening the last one.
+      // Past chats remain listed below in the sidebar.
+      const sid = `${user.username}_${Date.now()}`
+      const freshChat = { id: sid, title: 'New Conversation', timestamp: new Date() }
+      setChats([freshChat, ...mapped])
+      setActiveChatId(sid)
     } catch (e) {
       console.error('Could not load sessions:', e.message)
     }
