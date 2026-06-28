@@ -6,7 +6,7 @@ Stores chunks in both a per-session FAISS index and the global index.
 import os
 import tempfile
 
-from fastapi import UploadFile, File
+from fastapi import UploadFile
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
